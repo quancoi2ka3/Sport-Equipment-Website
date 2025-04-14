@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { Category } from '@/app/services/api';
+import { getImagePath } from '@/app/utils/image-utils';
 
 interface CategoryCardProps {
   category: Category;
@@ -16,7 +17,7 @@ export default function CategoryCard({ category }: CategoryCardProps) {
     >
       <div className="aspect-w-16 aspect-h-9 overflow-hidden">
         <Image
-          src={category.imageUrl || "/images/categories/placeholder.jpg"}
+          src={getImagePath(category.imageUrl || "/images/categories/placeholder.jpg")}
           alt={category.name}
           className="object-cover w-full h-48 sm:h-64 group-hover:scale-110 transition-transform duration-500"
           width={400}

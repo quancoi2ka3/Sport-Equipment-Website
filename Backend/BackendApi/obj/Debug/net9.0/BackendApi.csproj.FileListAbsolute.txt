@@ -31,3 +31,4 @@ D:\DATN\DATN_Project\Backend\BackendApi\obj\Debug\net9.0\refint\BackendApi.dll
 D:\DATN\DATN_Project\Backend\BackendApi\obj\Debug\net9.0\BackendApi.pdb
 D:\DATN\DATN_Project\Backend\BackendApi\obj\Debug\net9.0\BackendApi.genruntimeconfig.cache
 D:\DATN\DATN_Project\Backend\BackendApi\obj\Debug\net9.0\ref\BackendApi.dll
+D:\DATN\DATN_Project\Backend\BackendApi\obj\Debug\net9.0\BackendApi.sourcelink.json

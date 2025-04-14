@@ -5,6 +5,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { Product, getProductById } from '@/app/services/api';
+import { useCart } from '@/app/context/CartContext';
 
 export default function ProductDetails() {
   const { id } = useParams();
@@ -13,6 +14,7 @@ export default function ProductDetails() {
   const [selectedImage, setSelectedImage] = useState(0);
   const [quantity, setQuantity] = useState(1);
   const [error, setError] = useState('');
+  const { addToCart } = useCart();
   
   // Simulated additional product images
   const productImages = [
@@ -57,10 +59,17 @@ export default function ProductDetails() {
     setQuantity(quantity + 1);
   };
   
-  const addToCart = () => {
-    // This will be implemented when we add cart functionality
-    console.log(`Added ${quantity} of product ${id} to cart`);
-    // Later we'll integrate with cart state management
+  const handleAddToCart = () => {
+    if (!product || !product.inStock) return;
+    
+    addToCart({
+      id: product.id,
+      name: product.name,
+      price: product.price,
+      image: product.imageUrl || "/images/products/placeholder.jpg",
+      quantity: quantity,
+      discount: product.discount
+    });
   };
   
   if (loading) {
@@ -242,7 +251,7 @@ export default function ProductDetails() {
           
           {/* Add to Cart Button */}
           <button
-            onClick={addToCart}
+            onClick={handleAddToCart}
             className={`w-full py-3 px-6 rounded-lg font-semibold text-white ${
               product.inStock 
                 ? 'bg-blue-600 hover:bg-blue-700 transition-colors duration-300' 

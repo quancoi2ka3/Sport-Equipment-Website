@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
+import { getImagePath } from '@/app/utils/image-utils';
 
 interface HeroSlide {
   id: number;
@@ -78,7 +79,7 @@ export default function HeroSection() {
           {/* Background Image */}
           <div className="absolute inset-0 z-0">
             <Image
-              src={slide.image}
+              src={getImagePath(slide.image)}
               alt={slide.title}
               fill
               className="object-cover"

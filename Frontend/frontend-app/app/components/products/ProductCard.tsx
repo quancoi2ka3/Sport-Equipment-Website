@@ -4,6 +4,8 @@ import { useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { Product } from '@/app/services/api';
+import { getImagePath } from '@/app/utils/image-utils';
+import { useCart } from '@/app/context/CartContext';
 
 interface ProductCardProps {
   product: Product;
@@ -11,11 +13,27 @@ interface ProductCardProps {
 
 export default function ProductCard({ product }: ProductCardProps) {
   const [isHovered, setIsHovered] = useState(false);
+  const { addToCart } = useCart();
   
   // Calculate the sale price if there's a discount
   const salePrice = product.discount 
     ? (product.price - (product.price * product.discount / 100)).toFixed(2) 
     : null;
+
+  const handleQuickAdd = (e: React.MouseEvent) => {
+    e.preventDefault();
+    
+    if (!product.inStock) return;
+    
+    addToCart({
+      id: product.id,
+      name: product.name,
+      price: product.price,
+      image: product.imageUrl || "/images/products/placeholder.jpg",
+      quantity: 1,
+      discount: product.discount
+    });
+  };
   
   return (
     <div 
@@ -27,7 +45,7 @@ export default function ProductCard({ product }: ProductCardProps) {
       <Link href={`/products/${product.id}`} className="block relative">
         <div className="aspect-w-1 aspect-h-1 w-full overflow-hidden bg-gray-200 relative">
           <Image
-            src={product.imageUrl || "/images/placeholder.jpg"}
+            src={getImagePath(product.imageUrl || "/images/products/placeholder.jpg")}
             alt={product.name}
             className={`object-cover w-full h-64 transition-transform duration-300 ${isHovered ? 'scale-110' : 'scale-100'}`}
             width={300}
@@ -55,14 +73,14 @@ export default function ProductCard({ product }: ProductCardProps) {
             }`}
           >
             <button 
-              className="bg-white text-gray-800 px-4 py-2 rounded-full text-sm font-medium hover:bg-blue-600 hover:text-white transition-colors duration-300"
-              onClick={(e) => {
-                e.preventDefault();
-                // Add to cart functionality will be implemented later
-                console.log('Quick add to cart:', product.id);
-              }}
+              className={`px-4 py-2 rounded-full text-sm font-medium transition-colors duration-300 
+                ${product.inStock 
+                  ? 'bg-white text-gray-800 hover:bg-blue-600 hover:text-white' 
+                  : 'bg-gray-300 text-gray-600 cursor-not-allowed'}`}
+              onClick={handleQuickAdd}
+              disabled={!product.inStock}
             >
-              Quick Add
+              {product.inStock ? 'Quick Add' : 'Out of Stock'}
             </button>
           </div>
         </div>
