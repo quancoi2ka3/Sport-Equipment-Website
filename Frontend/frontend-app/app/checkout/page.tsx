@@ -1,18 +1,18 @@
 'use client';
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Elements } from '@stripe/react-stripe-js';
 import { useCart } from '@/app/context/CartContext';
 import stripeService from '@/app/services/payment/stripeService';
-import CheckoutForm from './CheckoutForm';
 import OrderSummary from './OrderSummary';
+import EmbeddedCheckout from './EmbeddedCheckout';
 
 export default function CheckoutPage() {
   const router = useRouter();
   const { items, getCartTotal, clearCart } = useCart();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [checkoutMode, setCheckoutMode] = useState<'embedded' | 'elements'>('embedded');
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [shippingInfo, setShippingInfo] = useState({
     name: '',
@@ -25,7 +25,7 @@ export default function CheckoutPage() {
   });
 
   // Redirect to cart if no items
-  React.useEffect(() => {
+  useEffect(() => {
     if (items.length === 0) {
       router.push('/cart');
     }
@@ -40,9 +40,9 @@ export default function CheckoutPage() {
     return { subtotal, shipping, total };
   }, [getCartTotal]);
 
-  // Create payment intent on load
-  React.useEffect(() => {
-    const createIntent = async () => {
+  // Create checkout session on load
+  useEffect(() => {
+    const createCheckoutSession = async () => {
       if (items.length > 0) {
         try {
           setLoading(true);
@@ -50,23 +50,42 @@ export default function CheckoutPage() {
           
           const { total } = calculateOrderTotals();
           
+          // Generate line items from cart items
+          const lineItems = items.map(item => ({
+            price_data: {
+              currency: 'usd',
+              product_data: {
+                name: item.name,
+                description: `${item.brand} - ${item.category}`,
+                images: item.images ? [item.images[0]] : [],
+              },
+              unit_amount: Math.round(item.price * 100), // Convert to cents
+            },
+            quantity: item.quantity,
+          }));
+
           // Create order metadata
-          const orderMetadata = {
+          const metadata = {
             orderId: `order-${Date.now()}`,
             itemCount: items.length.toString(),
             customerEmail: shippingInfo.email || 'guest@example.com',
           };
           
-          const result = await stripeService.createPaymentIntent({
-            amount: total, // The service will convert to cents
+          // Create an embedded checkout session
+          const result = await stripeService.createEmbeddedCheckoutSession({
+            amount: total * 100, // Convert to cents
             currency: 'usd',
-            metadata: orderMetadata,
+            successUrl: `${window.location.origin}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
+            cancelUrl: `${window.location.origin}/checkout?canceled=true`,
+            customerEmail: shippingInfo.email || undefined,
+            metadata,
+            lineItems,
           });
           
-          setClientSecret(result.clientSecret);
+          setClientSecret(result.clientSecret || null);
         } catch (err: unknown) {
-          console.error('Error creating payment intent:', err);
-          let errorMessage = 'Failed to initialize payment. Please refresh and try again.';
+          console.error('Error creating checkout session:', err);
+          let errorMessage = 'Failed to initialize checkout. Please try again.';
           if (err instanceof Error) {
             errorMessage = err.message || errorMessage;
           }
@@ -77,7 +96,7 @@ export default function CheckoutPage() {
       }
     };
 
-    createIntent();
+    createCheckoutSession();
   }, [items, calculateOrderTotals, shippingInfo.email]);
 
   const handleShippingInfoChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -135,18 +154,6 @@ export default function CheckoutPage() {
   }
 
   const { subtotal, shipping, total } = calculateOrderTotals();
-
-  // Create Stripe Elements options with clientSecret
-  const stripeOptions = clientSecret ? {
-    clientSecret: clientSecret,
-    appearance: {
-      theme: 'stripe' as const,
-      variables: {
-        colorPrimary: '#3b82f6', // blue-500
-        borderRadius: '6px'
-      }
-    }
-  } : {};
 
   return (
     <div className="container mx-auto px-4 py-12">
@@ -277,20 +284,22 @@ export default function CheckoutPage() {
               </div>
             )}
             
-            {clientSecret && (
-              <Elements stripe={stripeService.getStripe()} options={stripeOptions}>
-                <CheckoutForm 
-                  clientSecret={clientSecret}
-                  onPaymentSuccess={handlePaymentSuccess}
-                />
-              </Elements>
-            )}
-            
-            {loading && (
+            {loading ? (
               <div className="flex justify-center items-center py-6">
                 <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-blue-600"></div>
               </div>
+            ) : clientSecret ? (
+              // Render the embedded checkout when we have a client secret
+              <EmbeddedCheckout
+                clientSecret={clientSecret}
+                onComplete={handlePaymentSuccess}
+              />
+            ) : (
+              <div className="p-4 bg-yellow-50 text-yellow-700 rounded-md">
+                Unable to initialize payment. Please refresh the page and try again.
+              </div>
             )}
+            
           </div>
         </div>
         

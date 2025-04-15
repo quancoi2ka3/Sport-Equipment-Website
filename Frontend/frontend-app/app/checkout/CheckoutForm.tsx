@@ -5,7 +5,6 @@ import {
   PaymentElement,
   useStripe,
   useElements,
-  
 } from '@stripe/react-stripe-js';
 
 interface CheckoutFormProps {
@@ -22,6 +21,8 @@ export default function CheckoutForm({ clientSecret, onPaymentSuccess }: Checkou
   const [isLoading, setIsLoading] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [paymentStatus, setPaymentStatus] = useState<string | null>(null);
+  const [isElementLoading, setIsElementLoading] = useState(true);
+  const [elementError, setElementError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!stripe) {
@@ -91,16 +92,11 @@ export default function CheckoutForm({ clientSecret, onPaymentSuccess }: Checkou
     setMessage(null);
 
     try {
-      // Use Stripe.js to handle the payment
+      // Use Stripe.js to handle the payment - make sure PaymentElement is mounted
       const { error, paymentIntent } = await stripe.confirmPayment({
         elements,
         confirmParams: {
           return_url: `${window.location.origin}/checkout/success`,
-          payment_method_data: {
-            billing_details: {
-              // Add any billing details from your form state here
-            },
-          },
         },
         redirect: 'if_required'
       });
@@ -121,28 +117,7 @@ export default function CheckoutForm({ clientSecret, onPaymentSuccess }: Checkou
         // Handle other payment intent statuses
         setPaymentStatus(paymentIntent.status);
         switch(paymentIntent.status) {
-          case "processing":
-            setMessage("Your payment is processing. We'll update you when it's complete.");
-            // You may want to poll for status updates here
-            break;
-          case "requires_action":
-            setMessage("Additional verification is required. Please follow the prompts.");
-            // Handle 3D Secure or other authentication here
-            const { error: actionError, paymentIntent: updatedIntent } = await stripe.handleNextAction({
-              clientSecret
-            });
-            
-            if (actionError) {
-              setMessage(`Authentication failed: ${actionError.message}`);
-            } else if (updatedIntent && updatedIntent.status === 'succeeded') {
-              setMessage("Payment authentication successful! Redirecting...");
-              onPaymentSuccess();
-            } else {
-              setMessage(`Payment requires further action. Status: ${updatedIntent?.status || 'unknown'}`);
-            }
-            break;
-          default:
-            setMessage(`Payment status: ${paymentIntent.status}. Please contact support if you need assistance.`);
+          // ...existing code...
         }
       }
     } catch (unexpectedError) {
@@ -151,6 +126,17 @@ export default function CheckoutForm({ clientSecret, onPaymentSuccess }: Checkou
     } finally {
       setIsLoading(false);
     }
+  };
+
+  // Handle payment element loading and error states
+  const handlePaymentElementReady = () => {
+    setIsElementLoading(false);
+  };
+
+  const handlePaymentElementError = (event: { elementType: "payment"; error: { type: string; message?: string; code?: string; } }) => {
+    console.error("Payment element error:", event);
+    setElementError("There was a problem loading the payment form. Please refresh the page and try again.");
+    setIsElementLoading(false);
   };
 
   return (
@@ -162,16 +148,36 @@ export default function CheckoutForm({ clientSecret, onPaymentSuccess }: Checkou
         </div>
       )}
       
-      {/* Payment Element with updated styling */}
-      <div className="mb-4 rounded-md border border-gray-300 p-4">
-        <PaymentElement id="payment-element" options={{
-          layout: {
-            type: 'tabs',
-            defaultCollapsed: false,
-            radios: true,
-            spacedAccordionItems: true
-          },
-        }} />
+      {/* Show loading indicator while payment element is initializing */}
+      {isElementLoading && (
+        <div className="flex justify-center items-center py-10">
+          <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-600 mr-2"></div>
+          <p>Loading payment options...</p>
+        </div>
+      )}
+
+      {/* Show element error if it occurs */}
+      {elementError && (
+        <div className="p-4 rounded-md bg-red-50 text-red-600 mb-4">
+          {elementError}
+        </div>
+      )}
+      
+      {/* Payment Element with updated styling and event handlers */}
+      <div className={`mb-4 rounded-md border border-gray-300 p-4 ${isElementLoading ? 'hidden' : ''}`}>
+        <PaymentElement 
+          id="payment-element" 
+          onReady={handlePaymentElementReady}
+          onLoadError={handlePaymentElementError}
+          options={{
+            layout: {
+              type: 'tabs',
+              defaultCollapsed: false,
+              radios: true,
+              spacedAccordionItems: true
+            },
+          }} 
+        />
       </div>
 
       {/* Show saved payment methods toggle */}
@@ -187,7 +193,7 @@ export default function CheckoutForm({ clientSecret, onPaymentSuccess }: Checkou
       </div>
 
       <button
-        disabled={isLoading || !stripe || !elements || paymentStatus === 'succeeded'}
+        disabled={isLoading || !stripe || !elements || paymentStatus === 'succeeded' || isElementLoading || !!elementError}
         type="submit"
         className="w-full bg-blue-600 text-white py-3 px-4 rounded-md font-medium hover:bg-blue-700 transition-colors disabled:bg-blue-300 disabled:cursor-not-allowed"
       >
