@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Elements } from '@stripe/react-stripe-js';
 import { useCart } from '@/app/context/CartContext';
@@ -31,6 +31,15 @@ export default function CheckoutPage() {
     }
   }, [items, router]);
 
+  // Calculate order totals using a memoized function to prevent unnecessary recalculation
+  const calculateOrderTotals = useCallback(() => {
+    const subtotal = getCartTotal();
+    const shipping = subtotal > 50 ? 0 : 5.99;
+    const total = parseFloat((subtotal + shipping).toFixed(2)); // Ensure consistent decimal precision
+    
+    return { subtotal, shipping, total };
+  }, [getCartTotal]);
+
   // Create payment intent on load
   React.useEffect(() => {
     const createIntent = async () => {
@@ -39,22 +48,29 @@ export default function CheckoutPage() {
           setLoading(true);
           setError(null);
           
-          const subtotal = getCartTotal();
-          const shipping = subtotal > 50 ? 0 : 5.99;
-          const total = subtotal + shipping;
+          const { total } = calculateOrderTotals();
+          
+          // Create order metadata
+          const orderMetadata = {
+            orderId: `order-${Date.now()}`,
+            itemCount: items.length.toString(),
+            customerEmail: shippingInfo.email || 'guest@example.com',
+          };
           
           const result = await stripeService.createPaymentIntent({
-            amount: total,
+            amount: total, // The service will convert to cents
             currency: 'usd',
-            metadata: {
-              orderId: `order-${Date.now()}`, // In a real app, this would be a proper order ID
-            }
+            metadata: orderMetadata,
           });
           
           setClientSecret(result.clientSecret);
-        } catch (err) {
+        } catch (err: unknown) {
           console.error('Error creating payment intent:', err);
-          setError('Failed to initialize payment. Please try again.');
+          let errorMessage = 'Failed to initialize payment. Please refresh and try again.';
+          if (err instanceof Error) {
+            errorMessage = err.message || errorMessage;
+          }
+          setError(errorMessage);
         } finally {
           setLoading(false);
         }
@@ -62,7 +78,7 @@ export default function CheckoutPage() {
     };
 
     createIntent();
-  }, [items, getCartTotal]);
+  }, [items, calculateOrderTotals, shippingInfo.email]);
 
   const handleShippingInfoChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -100,18 +116,37 @@ export default function CheckoutPage() {
   };
 
   const handlePaymentSuccess = () => {
-    // In a real app, you would save the order to your backend here
-    clearCart();
-    router.push('/checkout/success');
+    try {
+      // In a real app, you would save the order to your backend here
+      clearCart();
+      
+      // Create a small delay to ensure the payment is processed
+      setTimeout(() => {
+        router.push('/checkout/success');
+      }, 500);
+    } catch (error) {
+      console.error('Error handling payment success:', error);
+      setError('There was an issue finalizing your order. Please contact support.');
+    }
   };
 
   if (items.length === 0) {
     return null; // Will redirect in the useEffect
   }
 
-  const subtotal = getCartTotal();
-  const shipping = subtotal > 50 ? 0 : 5.99;
-  const total = subtotal + shipping;
+  const { subtotal, shipping, total } = calculateOrderTotals();
+
+  // Create Stripe Elements options with clientSecret
+  const stripeOptions = clientSecret ? {
+    clientSecret: clientSecret,
+    appearance: {
+      theme: 'stripe' as const,
+      variables: {
+        colorPrimary: '#3b82f6', // blue-500
+        borderRadius: '6px'
+      }
+    }
+  } : {};
 
   return (
     <div className="container mx-auto px-4 py-12">
@@ -243,7 +278,7 @@ export default function CheckoutPage() {
             )}
             
             {clientSecret && (
-              <Elements stripe={stripeService.getStripe()}>
+              <Elements stripe={stripeService.getStripe()} options={stripeOptions}>
                 <CheckoutForm 
                   clientSecret={clientSecret}
                   onPaymentSuccess={handlePaymentSuccess}

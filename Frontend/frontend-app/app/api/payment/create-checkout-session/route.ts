@@ -1,15 +1,35 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
+import getConfig from 'next/config';
+
+// Get runtime config
+const { serverRuntimeConfig } = getConfig() || {};
 
 // Initialize Stripe with your secret key
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_51NxmVWE4n2TrIlSgdKx8zX31o1aMN52OTlhR0SsHXhwnybBMBQQhJKkecRNXgvT0BwHSiIuM82qDfpC0wdpVJmvD00zJv3fWHp', {
-  apiVersion: '2023-10-16',
-});
+const stripeSecretKey = process.env.STRIPE_SECRET_KEY || serverRuntimeConfig?.STRIPE_SECRET_KEY;
+let stripe: Stripe | null = null;
+
+// Only initialize Stripe if the API key is available
+if (stripeSecretKey) {
+  stripe = new Stripe(stripeSecretKey, {
+    apiVersion: '2025-03-31.basil', // Match the correct type for Stripe v18
+  });
+} else {
+  console.warn('Warning: STRIPE_SECRET_KEY is not defined in environment variables');
+}
 
 export async function POST(request: NextRequest) {
   try {
+    // Check if Stripe was initialized properly
+    if (!stripe) {
+      return NextResponse.json(
+        { message: 'Stripe is not configured properly. Please check your API key.' },
+        { status: 500 }
+      );
+    }
+    
     const body = await request.json();
-    const { lineItems, successUrl, cancelUrl } = body;
+    const { lineItems, successUrl, cancelUrl, customerEmail } = body;
 
     // Validate request parameters
     if (!lineItems || !Array.isArray(lineItems) || lineItems.length === 0) {
@@ -26,38 +46,43 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create a Checkout Session
-    const session = await stripe.checkout.sessions.create({
+    // Construct the session parameters
+    const sessionParams: Stripe.Checkout.SessionCreateParams = {
       payment_method_types: ['card'],
       line_items: lineItems,
       mode: 'payment',
       success_url: successUrl,
       cancel_url: cancelUrl,
-      billing_address_collection: 'required',
       shipping_address_collection: {
         allowed_countries: ['US', 'CA', 'GB', 'AU', 'VN'], // Add more countries as needed
       },
-      // Set custom fields for additional information
-      custom_fields: [
-        {
-          key: 'shipping_notes',
-          label: {
-            type: 'custom',
-            custom: 'Delivery instructions',
-          },
-          type: 'text',
-          optional: true,
-        },
-      ],
-      // Enable automatic tax calculation
-      automatic_tax: { enabled: true },
-    });
+      billing_address_collection: 'auto',
+    };
 
-    return NextResponse.json({ id: session.id, url: session.url });
+    // Add customer email if provided
+    if (customerEmail) {
+      sessionParams.customer_email = customerEmail;
+    }
+
+    // Create a Checkout Session
+    const session = await stripe.checkout.sessions.create(sessionParams);
+
+    return NextResponse.json({ 
+      id: session.id, 
+      url: session.url 
+    });
   } catch (error) {
     console.error('Error creating checkout session:', error);
     
     if (error instanceof Stripe.errors.StripeError) {
+      console.error('Stripe error details:', {
+        type: error.type,
+        code: error.code,
+        statusCode: error.statusCode,
+        message: error.message,
+        param: error.param
+      });
+      
       return NextResponse.json(
         { message: error.message },
         { status: error.statusCode || 500 }

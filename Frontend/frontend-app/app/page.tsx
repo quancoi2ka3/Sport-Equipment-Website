@@ -116,7 +116,7 @@ export default function Home() {
               </div>
               <h3 className="text-xl font-semibold text-gray-800 mb-2">Secure Payment</h3>
               <p className="text-gray-600">
-                Multiple secure payment options for your convenience and safety.
+                Multiple secure payment options including credit cards, Apple Pay, and Google Pay through Stripe secure platform.
               </p>
             </div>
             

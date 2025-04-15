@@ -1,14 +1,33 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
+import getConfig from 'next/config';
+
+// Get runtime config
+const { serverRuntimeConfig } = getConfig() || {};
 
 // Initialize Stripe with your secret key
-// Replace with your Stripe secret key for production
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_51NxmVWE4n2TrIlSgdKx8zX31o1aMN52OTlhR0SsHXhwnybBMBQQhJKkecRNXgvT0BwHSiIuM82qDfpC0wdpVJmvD00zJv3fWHp', {
-  apiVersion: '2023-10-16',
-});
+const stripeSecretKey = process.env.STRIPE_SECRET_KEY || serverRuntimeConfig?.STRIPE_SECRET_KEY;
+let stripe: Stripe | null = null;
+
+// Only initialize Stripe if the API key is available
+if (stripeSecretKey) {
+  stripe = new Stripe(stripeSecretKey, {
+    apiVersion: '2025-03-31.basil', // Match the correct type for Stripe v18
+  });
+} else {
+  console.warn('Warning: STRIPE_SECRET_KEY is not defined in environment variables');
+}
 
 export async function POST(request: NextRequest) {
   try {
+    // Check if Stripe was initialized properly
+    if (!stripe) {
+      return NextResponse.json(
+        { message: 'Stripe is not configured properly. Please check your API key.' },
+        { status: 500 }
+      );
+    }
+
     const body = await request.json();
     const { amount, currency = 'usd', metadata = {} } = body;
 
@@ -22,11 +41,10 @@ export async function POST(request: NextRequest) {
 
     // Create a PaymentIntent with the specified amount and currency
     const paymentIntent = await stripe.paymentIntents.create({
-      amount: amount, // amount in cents
+      amount: amount,
       currency,
       metadata,
-      payment_method_types: ['card'],
-      // Enable additional payment methods for different regions
+      // Use only automatic_payment_methods to avoid conflicts
       automatic_payment_methods: {
         enabled: true,
       },
