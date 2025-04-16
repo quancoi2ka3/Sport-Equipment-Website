@@ -5,11 +5,11 @@ import Stripe from 'stripe';
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
 let stripe: Stripe | null = null;
 
-// Initialize Stripe without specifying API version for better compatibility
+// Initialize Stripe with a compatible API version for Node.js 18
 try {
   if (stripeSecretKey) {
     stripe = new Stripe(stripeSecretKey, {
-      apiVersion: '2022-11-15', // Use a stable version that works with Node 18
+      apiVersion: '2023-10-16', // Using a stable version compatible with Node.js 18
       typescript: true,
     });
     console.log('Stripe initialized successfully for payment intent creation');

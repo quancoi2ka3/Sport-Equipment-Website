@@ -10,12 +10,18 @@ const stripeSecretKey = process.env.STRIPE_SECRET_KEY || serverRuntimeConfig?.ST
 let stripe: Stripe | null = null;
 
 // Only initialize Stripe if the API key is available
-if (stripeSecretKey) {
-  stripe = new Stripe(stripeSecretKey, {
-    apiVersion: '2025-03-31.basil', // Match the correct type for Stripe v18
-  });
-} else {
-  console.warn('Warning: STRIPE_SECRET_KEY is not defined in environment variables');
+try {
+  if (stripeSecretKey) {
+    stripe = new Stripe(stripeSecretKey, {
+      apiVersion: '2023-10-16', // Using a stable version compatible with Node.js 18
+      typescript: true,
+    });
+    console.log('Stripe initialized successfully for payment verification');
+  } else {
+    console.warn('Warning: STRIPE_SECRET_KEY is not defined in environment variables');
+  }
+} catch (error) {
+  console.error('Failed to initialize Stripe:', error);
 }
 
 export async function GET(request: NextRequest) {
@@ -63,7 +69,7 @@ export async function GET(request: NextRequest) {
     if (error instanceof Stripe.errors.StripeError) {
       console.error('Stripe error details:', {
         type: error.type,
-        code: error.code,
+        code: (error as any).code,
         statusCode: error.statusCode,
         message: error.message,
         param: error.param

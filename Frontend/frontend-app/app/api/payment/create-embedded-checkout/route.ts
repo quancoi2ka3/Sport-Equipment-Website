@@ -11,9 +11,9 @@ try {
   if (!stripeSecretKey) {
     console.warn('Warning: STRIPE_SECRET_KEY is not defined in environment variables');
   } else {
-    // Initialize Stripe without specifying API version for better compatibility with Node 18+
+    // Initialize Stripe with a compatible version for Node.js 18
     stripe = new Stripe(stripeSecretKey, {
-      apiVersion: '2022-11-15', // Use a stable version instead of future dated version
+      apiVersion: '2023-10-16',
       typescript: true,
     });
     console.log('Stripe initialized successfully for embedded checkout');
@@ -26,10 +26,9 @@ try {
 interface RequestBody {
   amount: number;
   currency?: string;
-  successUrl: string;
-  cancelUrl: string;
   customerEmail?: string;
   metadata?: Record<string, string>;
+  returnUrl?: string; // Added returnUrl parameter
   lineItems?: Array<{
     price_data?: {
       currency: string;
@@ -60,20 +59,11 @@ export async function POST(request: NextRequest) {
     const {
       amount,
       currency = 'usd',
-      successUrl,
-      cancelUrl,
       customerEmail,
       metadata = {},
+      returnUrl,
       lineItems = [],
     } = body;
-
-    // Validate inputs
-    if (!successUrl || !cancelUrl) {
-      return NextResponse.json(
-        { message: 'Success and cancel URLs are required' },
-        { status: 400 }
-      );
-    }
 
     console.log(`Creating checkout session with amount: ${amount} ${currency}`);
     console.log(`Line items count: ${lineItems.length}`);
@@ -93,26 +83,31 @@ export async function POST(request: NextRequest) {
       },
     ];
 
-    // Create the checkout session using a simpler approach
-    const session = await stripe.checkout.sessions.create({
+    // Create the checkout session for embedded mode with proper redirect handling
+    const sessionParams: Stripe.Checkout.SessionCreateParams = {
       payment_method_types: ['card'],
       mode: 'payment',
       line_items: checkoutLineItems,
-      success_url: successUrl,
-      cancel_url: cancelUrl,
       customer_email: customerEmail || undefined,
       metadata,
-      // Use hosted checkout instead of embedded if there are compatibility issues
-      // ui_mode: 'embedded', 
-    });
+      ui_mode: 'embedded',
+    };
 
-    console.log(`Checkout session created: ${session.id}`);
+    // Either provide return_url or disable redirects completely
+    if (returnUrl) {
+      sessionParams.return_url = returnUrl;
+    } else {
+      sessionParams.redirect_on_completion = 'never';
+    }
 
-    // Return the session details - client secret may not be present with hosted checkout
+    const session = await stripe.checkout.sessions.create(sessionParams);
+
+    console.log(`Embedded checkout session created: ${session.id}`);
+
+    // Return the session details specifically for embedded checkout
     return NextResponse.json({
       id: session.id,
       clientSecret: session.client_secret || null,
-      url: session.url || null,
     });
   } catch (error) {
     console.error('Error creating checkout session:', error);

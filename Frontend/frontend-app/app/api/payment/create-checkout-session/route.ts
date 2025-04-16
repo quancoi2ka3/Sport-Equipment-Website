@@ -1,21 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
-import getConfig from 'next/config';
-
-// Get runtime config
-const { serverRuntimeConfig } = getConfig() || {};
 
 // Initialize Stripe with your secret key
-const stripeSecretKey = process.env.STRIPE_SECRET_KEY || serverRuntimeConfig?.STRIPE_SECRET_KEY;
+const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
 let stripe: Stripe | null = null;
 
 // Only initialize Stripe if the API key is available
-if (stripeSecretKey) {
-  stripe = new Stripe(stripeSecretKey, {
-    apiVersion: '2025-03-31.basil', // Match the correct type for Stripe v18
-  });
-} else {
-  console.warn('Warning: STRIPE_SECRET_KEY is not defined in environment variables');
+try {
+  if (stripeSecretKey) {
+    stripe = new Stripe(stripeSecretKey, {
+      apiVersion: '2023-10-16', // Using a stable version compatible with Node.js 18
+      typescript: true,
+    });
+    console.log('Stripe initialized successfully for checkout session');
+  } else {
+    console.warn('Warning: STRIPE_SECRET_KEY is not defined in environment variables');
+  }
+} catch (error) {
+  console.error('Failed to initialize Stripe:', error);
 }
 
 export async function POST(request: NextRequest) {
@@ -74,18 +76,27 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Error creating checkout session:', error);
     
+    // Handle different types of errors
+    const stripeError = error as { type?: string; message?: string; statusCode?: number };
+    
+    if (stripeError?.type === 'StripeAuthenticationError') {
+      return NextResponse.json(
+        { message: 'Invalid API Key provided. Please check your Stripe secret key.' },
+        { status: 401 }
+      );
+    }
+    
     if (error instanceof Stripe.errors.StripeError) {
       console.error('Stripe error details:', {
-        type: error.type,
-        code: error.code,
-        statusCode: error.statusCode,
-        message: error.message,
-        param: error.param
+        type: stripeError.type,
+        code: (error as any).code,
+        statusCode: stripeError.statusCode,
+        message: stripeError.message,
       });
       
       return NextResponse.json(
-        { message: error.message },
-        { status: error.statusCode || 500 }
+        { message: stripeError.message || 'Stripe error occurred' },
+        { status: stripeError.statusCode || 500 }
       );
     }
     

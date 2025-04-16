@@ -3,53 +3,60 @@
 import React, { useEffect, useState } from 'react';
 import { EmbeddedCheckoutProvider, EmbeddedCheckout } from '@stripe/react-stripe-js';
 import { loadStripe } from '@stripe/stripe-js';
-import stripeService from '../services/payment/stripeService';
+import stripePublishableKey from '../config/stripe';
 
 interface EmbeddedCheckoutComponentProps {
   clientSecret: string;
   onComplete: () => void;
 }
 
+// Create a singleton Stripe promise using our centralized config
+let stripePromise: Promise<any> | null = null;
+
+const getStripePromise = () => {
+  if (!stripePromise && stripePublishableKey) {
+    console.log('Initializing Stripe instance for embedded checkout');
+    stripePromise = loadStripe(stripePublishableKey);
+  }
+  return stripePromise;
+};
+
 const EmbeddedCheckoutComponent: React.FC<EmbeddedCheckoutComponentProps> = ({ 
   clientSecret, 
   onComplete 
 }) => {
-  const [stripePromise, setStripePromise] = useState<Promise<any> | null>(null);
+  const [stripeInstance, setStripeInstance] = useState<Promise<any> | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   // Initialize Stripe on component mount
   useEffect(() => {
-    try {
-      // Get the Stripe instance directly rather than relying on the service
-      const publishableKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY;
-      if (!publishableKey) {
-        throw new Error('Stripe publishable key is not defined');
+    const initializeStripe = async () => {
+      try {
+        setLoading(true);
+        
+        if (!stripePublishableKey) {
+          console.error('Stripe publishable key is missing in environment variables');
+          setError('Missing Stripe configuration. Please contact support.');
+          setLoading(false);
+          return;
+        }
+        
+        // Use the singleton Stripe promise from our centralized config
+        const stripePromise = getStripePromise();
+        setStripeInstance(stripePromise);
+        
+        console.log('Stripe initialized successfully for embedded checkout');
+      } catch (err) {
+        console.error('Failed to initialize Stripe:', err);
+        setError('Failed to initialize payment system. Please try again later.');
+      } finally {
+        setLoading(false);
       }
-      
-      // Load Stripe directly
-      const stripeInstance = loadStripe(publishableKey);
-      setStripePromise(stripeInstance);
-      
-      console.log('Stripe initialization started');
-    } catch (err) {
-      console.error('Failed to initialize Stripe:', err);
-      setError('Failed to initialize payment system. Please try again later.');
-    }
-  }, []);
+    };
 
-  useEffect(() => {
-    // Verify client secret exists
-    if (!clientSecret) {
-      setError('Missing client secret. Cannot initialize checkout.');
-      setLoading(false);
-      return;
-    }
-    
-    if (stripePromise) {
-      setLoading(false);
-    }
-  }, [clientSecret, stripePromise]);
+    initializeStripe();
+  }, []);
 
   // Handle successful checkout completion
   const handleCheckoutComplete = () => {
@@ -87,17 +94,26 @@ const EmbeddedCheckoutComponent: React.FC<EmbeddedCheckoutComponentProps> = ({
     );
   }
 
+  if (!clientSecret) {
+    return (
+      <div className="border border-yellow-300 rounded-md p-4 bg-yellow-50 text-yellow-800">
+        <p className="font-medium">Missing payment information</p>
+        <p>Could not initialize the payment form. Please try refreshing the page.</p>
+      </div>
+    );
+  }
+
   return (
     <div className="w-full bg-white rounded-md shadow-sm">
-      {clientSecret && stripePromise && (
+      {clientSecret && stripeInstance && (
         <EmbeddedCheckoutProvider
-          stripe={stripePromise}
+          stripe={stripeInstance}
           options={{ clientSecret }}
         >
           <EmbeddedCheckout
             onComplete={handleCheckoutComplete}
             onError={handleCheckoutError}
-            className="h-[500px] w-full"
+            className="h-full w-full" // Increased height from 500px to 700px
           />
         </EmbeddedCheckoutProvider>
       )}

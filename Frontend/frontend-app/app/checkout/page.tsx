@@ -71,12 +71,10 @@ export default function CheckoutPage() {
             customerEmail: shippingInfo.email || 'guest@example.com',
           };
           
-          // Create an embedded checkout session
+          // Create an embedded checkout session - note: don't include success_url or cancel_url for embedded mode
           const result = await stripeService.createEmbeddedCheckoutSession({
             amount: total * 100, // Convert to cents
             currency: 'usd',
-            successUrl: `${window.location.origin}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
-            cancelUrl: `${window.location.origin}/checkout?canceled=true`,
             customerEmail: shippingInfo.email || undefined,
             metadata,
             lineItems,

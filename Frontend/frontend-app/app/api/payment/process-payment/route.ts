@@ -11,9 +11,15 @@ let stripe: Stripe | null = null;
 
 // Only initialize Stripe if the API key is available
 if (stripeSecretKey) {
-  stripe = new Stripe(stripeSecretKey, {
-    apiVersion: '2025-03-31.basil', // Match the correct type for Stripe v18
-  });
+  try {
+    stripe = new Stripe(stripeSecretKey, {
+      apiVersion: '2023-10-16', // Using a stable version compatible with Node.js 18
+      typescript: true,
+    });
+    console.log('Stripe initialized successfully for payment processing');
+  } catch (error) {
+    console.error('Failed to initialize Stripe:', error);
+  }
 } else {
   console.warn('Warning: STRIPE_SECRET_KEY is not defined in environment variables');
 }
@@ -46,10 +52,14 @@ export async function POST(request: NextRequest) {
       );
     }
     
+    console.log(`Confirming payment intent: ${paymentIntentId} with payment method: ${paymentMethodId}`);
+    
     // Confirm the payment intent with the payment method
     const paymentIntent = await stripe.paymentIntents.confirm(paymentIntentId, {
       payment_method: paymentMethodId,
     });
+
+    console.log(`Payment confirmation result: ${paymentIntent.status}`);
 
     return NextResponse.json({
       success: true,
@@ -64,11 +74,18 @@ export async function POST(request: NextRequest) {
     console.error('Error processing payment:', error);
     
     if (error instanceof Stripe.errors.StripeError) {
+      console.error('Stripe error details:', {
+        type: error.type,
+        code: (error as any).code,
+        statusCode: error.statusCode,
+        message: error.message
+      });
+      
       return NextResponse.json(
         { 
           success: false,
           message: error.message,
-          code: error.code,
+          code: error.type,
           type: error.type
         },
         { status: error.statusCode || 500 }

@@ -1,12 +1,31 @@
 'use client';
 
 import { loadStripe, Stripe } from '@stripe/stripe-js';
-
-// Get publishable key from environment variables
-const stripePublishableKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY;
+import stripePublishableKey from '../../config/stripe';
 
 // Singleton pattern to ensure we only load Stripe once
 let stripePromise: Promise<Stripe | null>;
+
+// Improved initializeStripe function for better error handling
+const initializeStripe = () => {
+  if (stripePromise) {
+    return stripePromise;
+  }
+
+  if (!stripePublishableKey) {
+    console.error('Cannot initialize Stripe: Missing publishable key');
+    return Promise.reject(new Error('Stripe publishable key is missing'));
+  }
+
+  try {
+    console.log('Initializing Stripe with publishable key');
+    stripePromise = loadStripe(stripePublishableKey);
+    return stripePromise;
+  } catch (error) {
+    console.error('Error initializing Stripe:', error);
+    return Promise.reject(error);
+  }
+};
 
 interface PaymentIntentRequest {
   amount: number;
@@ -58,13 +77,14 @@ interface VerifyPaymentResponse {
 }
 
 const stripeService = {
-  // Initialize and get the Stripe instance
-  getStripe: () => {
-    if (!stripePromise && stripePublishableKey) {
-      console.log('Initializing Stripe with publishable key');
-      stripePromise = loadStripe(stripePublishableKey);
+  // Initialize and get the Stripe instance with better error handling
+  getStripe: async (): Promise<Stripe | null> => {
+    try {
+      return await initializeStripe();
+    } catch (error) {
+      console.error('Failed to get Stripe instance:', error);
+      return null;
     }
-    return stripePromise;
   },
 
   // Create a payment intent
@@ -102,12 +122,24 @@ const stripeService = {
   createEmbeddedCheckoutSession: async (data: CheckoutSessionRequest): Promise<CheckoutSessionResponse> => {
     try {
       console.log('Creating embedded checkout session');
+      
+      // For embedded checkout, we need to either provide returnUrl or disable redirects
+      const requestBody = {
+        amount: data.amount,
+        currency: data.currency || 'usd',
+        customerEmail: data.customerEmail,
+        metadata: data.metadata || {},
+        lineItems: data.lineItems || [],
+        // Add returnUrl for handling completion redirects - this is required for embedded checkout
+        returnUrl: `${window.location.origin}/checkout/success`
+      };
+
       const response = await fetch('/api/payment/create-embedded-checkout', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(data),
+        body: JSON.stringify(requestBody),
       });
 
       if (!response.ok) {
@@ -118,12 +150,6 @@ const stripeService = {
 
       const result = await response.json();
       console.log('Checkout session created:', result.id);
-      
-      // Handle both embedded checkout and redirect checkout scenarios
-      if (result.url && !result.clientSecret) {
-        console.log('Redirecting to hosted checkout:', result.url);
-        window.location.href = result.url;
-      }
       
       return result;
     } catch (error) {
@@ -160,7 +186,7 @@ const stripeService = {
       }
       
       // Redirect to Stripe Checkout
-      const stripe = await stripePromise;
+      const stripe = await initializeStripe();
       if (stripe) {
         console.log('Using Stripe.js redirect to checkout with session ID:', session.id);
         const { error } = await stripe.redirectToCheckout({
