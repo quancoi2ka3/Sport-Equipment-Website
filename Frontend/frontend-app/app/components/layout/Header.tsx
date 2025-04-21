@@ -1,14 +1,62 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
+import { useRouter } from 'next/navigation';
 import { useCart } from '@/app/context/CartContext';
+import SearchSuggestions from './SearchSuggestions';
 
 export default function Header() {
+  const router = useRouter();
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const { getItemsCount } = useCart();
+  
+  const handleSearchSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (searchQuery.trim()) {
+      router.push(`/search?q=${encodeURIComponent(searchQuery.trim())}`);
+      setIsSearchOpen(false);
+      setSearchQuery('');
+    }
+  };
+  
+  // Handle keyboard shortcuts for search
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ctrl+K or Cmd+K to open search
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault();
+        setIsSearchOpen(prev => !prev);
+        
+        // Focus the search input if opening
+        if (!isSearchOpen && searchInputRef.current) {
+          setTimeout(() => {
+            searchInputRef.current?.focus();
+          }, 100);
+        }
+      }
+      
+      // Escape to close search
+      if (e.key === 'Escape' && isSearchOpen) {
+        setIsSearchOpen(false);
+        setSearchQuery('');
+      }
+    };
+    
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isSearchOpen]);
+  
+  // Focus search input when opened
+  useEffect(() => {
+    if (isSearchOpen && searchInputRef.current) {
+      searchInputRef.current.focus();
+    }
+  }, [isSearchOpen]);
   
   return (
     <header className="bg-white shadow-md">
@@ -115,12 +163,16 @@ export default function Header() {
         
         {/* Search Bar */}
         {isSearchOpen && (
-          <div className="mt-4 border-t pt-4">
-            <form className="flex w-full">
+          <div className="mt-4 border-t pt-4 pb-2 relative">
+            <form onSubmit={handleSearchSubmit} className="flex w-full">
               <input
+                ref={searchInputRef}
                 type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search for products..."
                 className="w-full px-4 py-2 border rounded-l-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                autoFocus
               />
               <button
                 type="submit"
@@ -129,6 +181,18 @@ export default function Header() {
                 Search
               </button>
             </form>
+            <div className="relative">
+              <SearchSuggestions 
+                query={searchQuery} 
+                onSelectSuggestion={() => {
+                  setIsSearchOpen(false);
+                  setSearchQuery('');
+                }}
+              />
+            </div>
+            <div className="flex justify-center mt-2 text-xs text-gray-500">
+              <span>Press <kbd className="px-1 py-0.5 bg-gray-100 border border-gray-300 rounded">ESC</kbd> to close or <kbd className="px-1 py-0.5 bg-gray-100 border border-gray-300 rounded">Ctrl K</kbd> to search anytime</span>
+            </div>
           </div>
         )}
       </div>
